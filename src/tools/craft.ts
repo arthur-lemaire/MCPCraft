@@ -2,128 +2,190 @@ import { Bot } from 'mineflayer';
 import minecraftData from 'minecraft-data';
 import { Vec3 } from 'vec3';
 
-// On exporte une constante (objet) qui contient TOUTE la définition de l'outil
 export const craftTool = {
-    name: 'craft_item', // <--- C'est cette propriété "name" qui manquait et faisait planter !
-    description: 'Crafts an item, recursively gathering ingredients and placing tables if needed.',
+    name: 'craft_item',
+    description: 'Crafts an item. Will place a crafting table if needed.',
     inputSchema: {
         type: 'object',
         properties: {
-            name: { type: 'string', description: 'Name of the item to craft (ex: iron_pickaxe)' },
-            count: { type: 'number', description: 'Quantity (default 1)' }
+            name: { type: 'string', description: 'Name of the item to craft (e.g., stick, wooden_pickaxe, crafting_table)' },
+            count: { type: 'number', description: 'Quantity to craft (default 1)' }
         },
         required: ['name']
     },
     handler: async (bot: Bot, args: { name: string, count?: number }) => {
         const mcData = minecraftData(bot.version);
-        const targetItemName = args.name;
-        const targetCount = args.count || 1;
+        const targetName = args.name;
+        const targetCount = args.count ?? 1;
+        const logs: string[] = [];
 
-        // --- PROTECTION CONTRE LES BOUCLES ---
-        async function craftRecursive(name: string, count: number, activeCrafts: Set<number> = new Set()): Promise<boolean> {
-            const itemData = mcData.itemsByName[name];
-            if (!itemData) {
-                bot.chat(`❓ Item inconnu : ${name}`);
-                return false;
-            }
-
-            // 1. CIRCUIT BREAKER
-            if (activeCrafts.has(itemData.id)) {
-                console.warn(`⚠️ Cycle infini détecté pour ${name}. Annulation.`);
-                return false; 
-            }
-            const newActiveCrafts = new Set(activeCrafts);
-            newActiveCrafts.add(itemData.id);
-
-            // A. Ai-je déjà l'item ?
-            const currentCount = bot.inventory.count(itemData.id, null);
-            if (currentCount >= count) return true;
-
-            const needed = count - currentCount;
-
-            // B. Trouver une recette
-            // Utilisation de recipesAll pour la théorie
-            const recipes = bot.recipesAll(itemData.id, null, false);
-            if (recipes.length === 0) return false;
-
-            // Optimisation : Recettes sans table en priorité
-            recipes.sort((a, b) => (a.requiresTable === b.requiresTable ? 0 : a.requiresTable ? 1 : -1));
-            const recipe = recipes[0];
-
-            // C. Vérifier/Crafter les ingrédients
-            for (const ingredient of recipe.delta) {
-                if (ingredient.count > 0) {
-                    const ingredientName = mcData.items[ingredient.id].name;
-                    const requiredForBatch = Math.abs(ingredient.count) * Math.ceil(needed / recipe.result.count);
-                    
-                    const hasIngredient = await craftRecursive(ingredientName, requiredForBatch, newActiveCrafts);
-                    if (!hasIngredient) return false; 
-                }
-            }
-
-            // D. Gestion de la Table de Craft
-            if (recipe.requiresTable) {
-                if (name === 'crafting_table') {
-                    // Prevent loops for crafting table itself
-                } else {
-                    const tableReady = await ensureCraftingTable(newActiveCrafts);
-                    if (!tableReady) return false;
-                }
-            }
-
-            // E. Exécution
-            const tableBlock = bot.findBlock({ matching: mcData.blocksByName.crafting_table.id, maxDistance: 4 });
-            const feasibleRecipes = bot.recipesFor(itemData.id, null, needed, tableBlock);
-            
-            if (feasibleRecipes.length === 0) return false;
-
-            try {
-                await bot.craft(feasibleRecipes[0], needed, tableBlock || undefined);
-                return true;
-            } catch (error) {
-                console.error(`Erreur craft ${name}:`, error);
-                return false;
-            }
+        function log(msg: string) {
+            console.error(`[Craft] ${msg}`);
+            logs.push(msg);
         }
 
-        // Fonction helper pour la table
-        async function ensureCraftingTable(activeCrafts: Set<number>): Promise<boolean> {
-            const tableBlock = bot.findBlock({ matching: mcData.blocksByName.crafting_table.id, maxDistance: 4 });
-            if (tableBlock) return true;
+        // Count items in inventory
+        function countItem(itemName: string): number {
+            const item = mcData.itemsByName[itemName];
+            if (!item) return 0;
+            return bot.inventory.count(item.id, null);
+        }
 
-            const hasTableItem = bot.inventory.findInventoryItem(mcData.itemsByName.crafting_table.id, null);
-            if (!hasTableItem) {
-                const success = await craftRecursive('crafting_table', 1, activeCrafts);
-                if (!success) return false;
+        // Find crafting table block nearby
+        function findCraftingTable() {
+            return bot.findBlock({
+                matching: mcData.blocksByName.crafting_table.id,
+                maxDistance: 4
+            });
+        }
+
+        // Place crafting table
+        async function placeCraftingTable(): Promise<boolean> {
+            const tableItem = bot.inventory.findInventoryItem(mcData.itemsByName.crafting_table.id, null, false);
+            if (!tableItem) {
+                log('No crafting_table in inventory to place');
+                return false;
             }
 
-            const p = bot.entity.position;
-            const placePos = p.offset(1, 0, 0); 
-            const tableItem = bot.inventory.findInventoryItem(mcData.itemsByName.crafting_table.id, null);
-            
-            if(tableItem) {
-                await bot.equip(tableItem, 'hand');
-                const refBlock = bot.blockAt(placePos.offset(0, -1, 0));
-                if(refBlock && refBlock.name !== 'air') {
+            await bot.equip(tableItem, 'hand');
+            const pos = bot.entity.position.floored();
+
+            const directions = [
+                new Vec3(1, 0, 0), new Vec3(-1, 0, 0),
+                new Vec3(0, 0, 1), new Vec3(0, 0, -1)
+            ];
+
+            for (const dir of directions) {
+                const placePos = pos.plus(dir);
+                const ground = bot.blockAt(placePos.offset(0, -1, 0));
+                const target = bot.blockAt(placePos);
+
+                if (ground && ground.name !== 'air' && target && target.name === 'air') {
                     try {
-                        await bot.placeBlock(refBlock, new Vec3(0, 1, 0));
+                        await bot.placeBlock(ground, new Vec3(0, 1, 0));
+                        await bot.waitForTicks(5);
+                        log('Placed crafting_table');
                         return true;
-                    } catch (e) { return false; }
+                    } catch (e) {
+                        continue;
+                    }
                 }
             }
+            log('Could not find spot to place crafting_table');
             return false;
         }
 
-        // --- LANCEMENT ---
-        bot.chat(`⚙️ Crafting ${targetCount} ${targetItemName}...`);
-        const success = await craftRecursive(targetItemName, targetCount, new Set());
+        // Simple craft function - tries to craft directly
+        async function simpleCraft(itemName: string, count: number, withTable: boolean): Promise<boolean> {
+            const item = mcData.itemsByName[itemName];
+            if (!item) {
+                log(`Unknown item: ${itemName}`);
+                return false;
+            }
+
+            const table = withTable ? findCraftingTable() : null;
+            const recipes = bot.recipesFor(item.id, null, count, table);
+
+            if (recipes.length === 0) {
+                log(`No recipe found for ${itemName} (withTable=${withTable})`);
+                return false;
+            }
+
+            try {
+                await bot.craft(recipes[0], count, table ?? undefined);
+                log(`Crafted ${count}x ${itemName}`);
+                return true;
+            } catch (e) {
+                log(`Craft error for ${itemName}: ${e}`);
+                return false;
+            }
+        }
+
+        // Ensure we have a crafting table ready
+        async function ensureCraftingTable(): Promise<boolean> {
+            // Already nearby?
+            if (findCraftingTable()) return true;
+
+            // In inventory? Place it
+            if (bot.inventory.findInventoryItem(mcData.itemsByName.crafting_table.id, null, false)) {
+                return await placeCraftingTable();
+            }
+
+            // Need to craft one - try without table first
+            log('Crafting a crafting_table...');
+            const crafted = await simpleCraft('crafting_table', 1, false);
+            if (!crafted) {
+                log('Failed to craft crafting_table');
+                return false;
+            }
+
+            return await placeCraftingTable();
+        }
+
+        // Main craft logic
+        async function doCraft(itemName: string, count: number): Promise<boolean> {
+            const item = mcData.itemsByName[itemName];
+            if (!item) {
+                log(`Unknown item: ${itemName}`);
+                return false;
+            }
+
+            // Already have enough?
+            const have = countItem(itemName);
+            if (have >= count) {
+                log(`Already have ${have}x ${itemName}`);
+                return true;
+            }
+
+            const needed = count - have;
+            log(`Need to craft ${needed}x ${itemName} (have ${have})`);
+
+            // Try without crafting table first
+            let success = await simpleCraft(itemName, needed, false);
+            if (success) return true;
+
+            // Try with crafting table
+            const tableReady = await ensureCraftingTable();
+            if (!tableReady) {
+                log('Cannot get crafting table ready');
+                return false;
+            }
+
+            success = await simpleCraft(itemName, needed, true);
+            return success;
+        }
+
+        // === MAIN ===
+        bot.chat(`Crafting ${targetCount}x ${targetName}...`);
+
+        const success = await doCraft(targetName, targetCount);
+
+        // Cleanup: pick up table
+        const table = findCraftingTable();
+        if (table) {
+            try {
+                await bot.dig(table);
+                await bot.waitForTicks(10);
+                log('Picked up crafting_table');
+            } catch { }
+        }
+
+        const finalCount = countItem(targetName);
 
         if (success) {
-            const table = bot.findBlock({ matching: mcData.blocksByName.crafting_table.id, maxDistance: 4 });
-            if (table) await bot.dig(table);
-            return { content: [{ type: 'text', text: `✅ Succès : ${targetItemName} crafté.` }] };
+            return {
+                content: [{
+                    type: 'text',
+                    text: `Crafted ${targetName}. Now have ${finalCount} in inventory.\nLog: ${logs.join(' -> ')}`
+                }]
+            };
         } else {
-            return { content: [{ type: 'text', text: `❌ Échec : Impossible de crafter ${targetItemName}.` }] };
+            return {
+                content: [{
+                    type: 'text',
+                    text: `Failed to craft ${targetName}. Have ${finalCount} in inventory.\nLog: ${logs.join(' -> ')}`
+                }]
+            };
         }
     }
 };

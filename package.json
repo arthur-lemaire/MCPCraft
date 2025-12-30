@@ -5,6 +5,7 @@
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.25.1",
+    "canvas": "^3.2.0",
     "minecraft-data": "^3.102.3",
     "mineflayer": "^4.33.0",
     "mineflayer-pathfinder": "^2.4.5",
@@ -12,6 +13,9 @@
   },
   "devDependencies": {
     "@types/node": "^25.0.3",
+    "flying-squid": "^1.11.0",
+    "mineflayer-web-inventory": "^1.8.5",
+    "prismarine-viewer": "^1.33.0",
     "tsx": "^4.21.0",
     "typescript": "^5.9.3"
   }

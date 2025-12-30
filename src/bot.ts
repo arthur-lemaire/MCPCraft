@@ -1,6 +1,8 @@
 
 import mineflayer from 'mineflayer';
 import { pathfinder } from 'mineflayer-pathfinder';
+// import { viewer as prismarineViewer } from 'prismarine-viewer';
+// import inventoryViewer from 'mineflayer-web-inventory';
 
 // Configuration centralisée
 export const BOT_CONFIG = {
@@ -26,11 +28,23 @@ export function initBot(): mineflayer.Bot {
 
     // Load plugins
     botInstance.loadPlugin(pathfinder);
+    // Temporarily disabled to debug EADDRINUSE error
+    // botInstance.loadPlugin(inventoryViewer, { port: 5002 });
 
     // Event listeners
     botInstance.on('spawn', () => {
         console.error('[Bot] Spawned and ready.');
         botInstance?.chat('Je suis prêt ! (Architecture v2)');
+
+        // Start the viewer - Temporarily disabled
+        // if (botInstance) {
+        //     prismarineViewer(botInstance, {
+        //         viewDistance: 6,
+        //         firstPerson: false,
+        //         port: 5001,
+        //     });
+        //     console.error('[Viewer] Visualizer running on http://localhost:5001');
+        // }
     });
 
     botInstance.on('kicked', (reason) => console.error(`[Bot] Kicked: ${reason}`));

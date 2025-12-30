@@ -12,7 +12,8 @@ import { buildTool } from './tools/build';
 import { craftTool } from './tools/craft';
 import { dropTool } from './tools/drop';
 import { smeltTool } from './tools/smelt';
-import { autoIronTool } from './tools/auto_iron';
+import { visionTool } from './tools/vision';
+import { netherPortalTool, bucketTool } from './tools/nether_portal';
 
 // Interface commune
 interface Tool {
@@ -30,7 +31,9 @@ const tools: Tool[] = [
     craftTool,
     dropTool,
     smeltTool,
-    autoIronTool
+    visionTool,
+    netherPortalTool,
+    bucketTool
 ];
 
 export function startMcpServer(botProvider: () => Bot) {
@@ -41,13 +44,23 @@ export function startMcpServer(botProvider: () => Bot) {
         capabilities: { tools: {} }
     });
 
-    server.setRequestHandler(ListToolsRequestSchema, async () => ({
-        tools: tools.map(t => ({
-            name: t.name,
-            description: t.description,
-            inputSchema: t.inputSchema
-        }))
-    }));
+    server.setRequestHandler(ListToolsRequestSchema, async () => {
+        const validTools = tools.filter(t => {
+            if (!t) {
+                console.error("Un outil non défini a été trouvé et filtré. Vérifiez les importations d'outils.");
+                return false;
+            }
+            return true;
+        });
+
+        return {
+            tools: validTools.map(t => ({
+                name: t.name,
+                description: t.description,
+                inputSchema: t.inputSchema
+            }))
+        };
+    });
 
     server.setRequestHandler(CallToolRequestSchema, async (request) => {
         const toolName = request.params.name;

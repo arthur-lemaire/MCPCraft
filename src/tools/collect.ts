@@ -1,6 +1,7 @@
 
 import { Bot } from 'mineflayer';
-import { goals } from 'mineflayer-pathfinder';
+import pkg from 'mineflayer-pathfinder';
+const { goals } = pkg;
 import minecraftData from 'minecraft-data';
 
 export const collectTool = {

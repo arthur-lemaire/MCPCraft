@@ -1,7 +1,33 @@
 {
+  "name": "mcpcraft",
+  "version": "2.0.0",
+  "description": "MCP server that interfaces with a Minecraft bot using Mineflayer - Control Minecraft with AI",
+  "author": "MCPCraft Contributors",
+  "license": "MIT",
+  "type": "module",
+  "main": "dist/index.js",
   "scripts": {
     "start": "tsx src/index.ts",
-    "build": "tsc"
+    "dev": "tsx watch src/index_dev.ts",
+    "build": "tsc",
+    "proxy": "tsx src/mcp_proxy.ts",
+    "test": "tsx tests/integration.test.ts"
+  },
+  "keywords": [
+    "minecraft",
+    "mcp",
+    "model-context-protocol",
+    "mineflayer",
+    "bot",
+    "ai",
+    "llm"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/MCPCraft/MCPCraft.git"
+  },
+  "engines": {
+    "node": ">=18.0.0"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.25.1",

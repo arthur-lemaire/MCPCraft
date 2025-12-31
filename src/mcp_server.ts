@@ -1,4 +1,3 @@
-
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { CallToolRequestSchema, ListToolsRequestSchema } from "@modelcontextprotocol/sdk/types.js";
@@ -15,7 +14,6 @@ import { smeltTool } from './tools/smelt';
 import { visionTool } from './tools/vision';
 import { netherPortalTool, bucketTool } from './tools/nether_portal';
 
-// Interface commune
 interface Tool {
     name: string;
     description: string;
@@ -38,21 +36,14 @@ const tools: Tool[] = [
 
 export function startMcpServer(botProvider: () => Bot) {
     const server = new Server({
-        name: "minecraft-mcp-v2",
+        name: "mcpcraft",
         version: "2.0.0"
     }, {
         capabilities: { tools: {} }
     });
 
     server.setRequestHandler(ListToolsRequestSchema, async () => {
-        const validTools = tools.filter(t => {
-            if (!t) {
-                console.error("Un outil non défini a été trouvé et filtré. Vérifiez les importations d'outils.");
-                return false;
-            }
-            return true;
-        });
-
+        const validTools = tools.filter(t => t != null);
         return {
             tools: validTools.map(t => ({
                 name: t.name,
@@ -71,23 +62,22 @@ export function startMcpServer(botProvider: () => Bot) {
         }
 
         try {
-            // On récupère l'instance du bot au moment de l'appel
             const bot = botProvider();
             if (!bot) {
                 return { content: [{ type: 'text', text: "Le bot n'est pas connecté." }] };
             }
-            
+
             return await tool.handler(bot, request.params.arguments || {});
         } catch (error) {
             const msg = error instanceof Error ? error.message : String(error);
-            return { content: [{ type: 'text', text: `Erreur interne outil: ${msg}` }] };
+            return { content: [{ type: 'text', text: `Erreur: ${msg}` }] };
         }
     });
 
     const transport = new StdioServerTransport();
     server.connect(transport).then(() => {
-        console.error('Serveur MCP v2 prêt et connecté.');
+        console.error('[MCP] Serveur prêt');
     }).catch(err => {
-        console.error('Erreur fatale MCP:', err);
+        console.error('[MCP] Erreur fatale:', err);
     });
 }

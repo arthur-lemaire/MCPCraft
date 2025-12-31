@@ -1,6 +1,7 @@
 
 import { Bot } from 'mineflayer';
-import { goals } from 'mineflayer-pathfinder';
+import pkg from 'mineflayer-pathfinder';
+const { goals } = pkg;
 
 export const moveTool = {
     name: 'move_to',
